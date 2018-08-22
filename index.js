@@ -1,34 +1,36 @@
 'use strict';
 
-import React from "react";
+import React from 'react';
 
 import ReactNative, {
   NativeModules,
   NativeAppEventEmitter,
   DeviceEventEmitter,
-  Platform
-} from "react-native";
+  Platform,
+} from 'react-native';
 
 var AudioRecorderManager = NativeModules.AudioRecorderManager;
 
 var AudioRecorder = {
   prepareRecordingAtPath: function(path, options) {
     if (this.progressSubscription) this.progressSubscription.remove();
-    this.progressSubscription = NativeAppEventEmitter.addListener('recordingProgress',
-      (data) => {
+    this.progressSubscription = NativeAppEventEmitter.addListener(
+      'recordingProgress',
+      data => {
         if (this.onProgress) {
           this.onProgress(data);
         }
-      }
+      },
     );
 
     if (this.finishedSubscription) this.finishedSubscription.remove();
-    this.finishedSubscription = NativeAppEventEmitter.addListener('recordingFinished',
-      (data) => {
+    this.finishedSubscription = NativeAppEventEmitter.addListener(
+      'recordingFinished',
+      data => {
         if (this.onFinished) {
           this.onFinished(data);
         }
-      }
+      },
     );
 
     var defaultOptions = {
@@ -40,10 +42,11 @@ var AudioRecorder = {
       MeteringEnabled: false,
       MeasurementMode: false,
       AudioEncodingBitRate: 32000,
-      IncludeBase64: false
+      IncludeBase64: false,
+      ProgressUpdateInterval: 200,
     };
 
-    var recordingOptions = {...defaultOptions, ...options};
+    var recordingOptions = { ...defaultOptions, ...options };
 
     if (Platform.OS === 'ios') {
       AudioRecorderManager.prepareRecordingAtPath(
@@ -54,10 +57,13 @@ var AudioRecorder = {
         recordingOptions.AudioEncoding,
         recordingOptions.MeteringEnabled,
         recordingOptions.MeasurementMode,
-        recordingOptions.IncludeBase64
+        recordingOptions.IncludeBase64,
       );
     } else {
-      return AudioRecorderManager.prepareRecordingAtPath(path, recordingOptions);
+      return AudioRecorderManager.prepareRecordingAtPath(
+        path,
+        recordingOptions,
+      );
     }
   },
   startRecording: function() {
@@ -97,8 +103,8 @@ if (Platform.OS === 'ios') {
     LibraryDirectoryPath: AudioRecorderManager.LibraryDirectoryPath,
     PicturesDirectoryPath: AudioRecorderManager.PicturesDirectoryPath,
     MusicDirectoryPath: AudioRecorderManager.MusicDirectoryPath,
-    DownloadsDirectoryPath: AudioRecorderManager.DownloadsDirectoryPath
+    DownloadsDirectoryPath: AudioRecorderManager.DownloadsDirectoryPath,
   };
 }
 
-module.exports = {AudioRecorder, AudioUtils};
+module.exports = { AudioRecorder, AudioUtils };
