@@ -55,6 +55,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
 
   private static final String TAG = "ReactNativeAudio";
   private static final long DEFAULT_TIMEOUT_US = 1000 * 10;
+  private static final int BUFFER_SIZE = 48000;
 
   private static final String DocumentDirectoryPath = "DocumentDirectoryPath";
   private static final String PicturesDirectoryPath = "PicturesDirectoryPath";
@@ -76,6 +77,8 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
   private boolean doneEncoding = false;
   private Timer timer;
   private StopWatch stopWatch;
+  private int sampleRate;
+  private int channels;
   private int recordBufferSize;
   private int trackBufferSize;
   private int audioTrackIndex;
@@ -137,25 +140,24 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
     if (isRecording){
       logAndRejectPromise(promise, "INVALID_STATE", "Please call stopRecording before starting recording");
     }
-    int sampleRate = recordingSettings.getInt("SampleRate");
-    int channels = recordingSettings.getInt("Channels");
+    sampleRate = recordingSettings.getInt("SampleRate");
+    channels = 1; // recordingSettings.getInt("Channels");
     int bitRate = recordingSettings.getInt("AudioEncodingBitRate");
     recordBufferSize = AudioRecord.getMinBufferSize(
         sampleRate,
-        AudioFormat.CHANNEL_IN_STEREO,
+        AudioFormat.CHANNEL_IN_MONO,
         AudioFormat.ENCODING_PCM_16BIT
     );
     trackBufferSize = AudioTrack.getMinBufferSize(
         sampleRate,
-        AudioFormat.CHANNEL_OUT_STEREO,
+        AudioFormat.CHANNEL_OUT_MONO,
         AudioFormat.ENCODING_PCM_16BIT
     );
 
-    // recorder = new MediaRecorder();
     audioRecord = new AudioRecord (
         MediaRecorder.AudioSource.MIC,
         sampleRate,
-        AudioFormat.CHANNEL_IN_STEREO,
+        AudioFormat.CHANNEL_IN_MONO,
         AudioFormat.ENCODING_PCM_16BIT,
         recordBufferSize
     );
@@ -167,7 +169,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
         new AudioFormat.Builder()
              .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
              .setSampleRate(sampleRate)
-             .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+             .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
              .build(),
         trackBufferSize,
         AudioTrack.MODE_STREAM,
@@ -179,13 +181,6 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
       initEncoder(sampleRate, channels, bitRate);
       int outputFormat = getOutputFormatFromString(recordingSettings.getString("OutputFormat"));
       int audioEncoder = getAudioEncoderFromString(recordingSettings.getString("AudioEncoding"));
-      // recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-      // recorder.setOutputFormat(outputFormat);
-      // recorder.setAudioEncoder(audioEncoder);
-      // recorder.setAudioSamplingRate(sampleRate);
-      // recorder.setAudioChannels(channels);
-      // recorder.setAudioEncodingBitRate(bitRate);
-      // recorder.setOutputFile(recordingPath);
       meteringEnabled = recordingSettings.getBoolean("MeteringEnabled");
       progressUpdateInterval = recordingSettings.getInt("ProgressUpdateInterval");
     }
@@ -195,7 +190,6 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
     }
 
     try {
-      // recorder.prepare();
       String tempPath = this.getReactApplicationContext().getCacheDir().getAbsolutePath() + "/temp.pcm";
       Log.d("RNAudio", "tempPath: " + tempPath);
       tempBos = new BufferedOutputStream(new FileOutputStream(tempPath));
@@ -249,15 +243,10 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void startRecording(Promise promise){
-    // if (recorder == null){
-    //   logAndRejectPromise(promise, "RECORDING_NOT_PREPARED", "Please call prepareRecordingAtPath before starting recording");
-    //   return;
-    // }
     if (isRecording){
       logAndRejectPromise(promise, "INVALID_STATE", "Please call stopRecording before starting recording");
       return;
     }
-    // recorder.start();
     encoder.start();
     audioRecord.startRecording();
     audioTrack.play();
@@ -290,8 +279,6 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
     isPaused = false;
 
     try {
-      // recorder.stop();
-      // recorder.release();
       stopWatch.stop();
       audioRecord.stop();
       audioTrack.pause();
@@ -300,9 +287,6 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
       // https://developer.android.com/reference/android/media/MediaRecorder.html#stop()
       logAndRejectPromise(promise, "RUNTIME_EXCEPTION", "No valid audio data received. You may be using a device that can't record audio.");
       return;
-    }
-    finally {
-      recorder = null;
     }
 
     promise.resolve(currentOutputFile);
@@ -367,7 +351,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
           WritableMap body = Arguments.createMap();
           body.putDouble("currentTime", stopWatch.getTimeSeconds());
           if (meteringEnabled) {
-              // int amplitude = recorder.getMaxAmplitude();
+              // TODO
               int amplitude = 0;
               if (amplitude == 0) {
                   body.putInt("currentMetering", -160);//The first call - absolutely silence
@@ -402,45 +386,59 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
   }
 
   private void recordAndEncode() {
-    while(isRecording) {
-      try {
+    try {
+      while(isRecording) {
           byte[] buf = new byte[recordBufferSize];
           int num = audioRecord.read(buf, 0, recordBufferSize);
           audioTrack.write(buf, 0, num);
           tempBos.write(buf);
-      } catch(final Exception e) {
-          Log.d("RECORD_AND_ENCODE" , e.getMessage());
-          return;
       }
-    }
-    try {
       tempBos.close();
       String tempPath = this.getReactApplicationContext().getCacheDir().getAbsolutePath() + "/temp.pcm";
       tempBis = new BufferedInputStream(new FileInputStream(tempPath));
-      aacBos = new BufferedOutputStream(new FileOutputStream(currentOutputFile));
 
+      int inputBufferIndex = 0;
+      boolean hasMoreData = true;
+      double presentationTimeUs = 0;
+      int totalBytesRead = 0;
       while (tempBis.available() > 0) {
-          byte[] buf = new byte[2048];
-          int num = tempBis.read(buf);
-          byte[] inputData = Arrays.copyOfRange(buf, 0, num);
-          queueInputBuffer(inputData);
-          Log.d("RNAudio", "queueInputBuffer");
-          while (true) {
-            int index = dequeueOutputBuffer();
-            Log.d("RNAudio", "dequeueOutputBuffer");
-            if (index < 0) {
-              break;
-            }
+          byte[] buf = new byte[BUFFER_SIZE];
+          inputBufferIndex = encoder.dequeueInputBuffer(0);
+          if (inputBufferIndex >= 0) {
+              ByteBuffer inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+              inputBuffer.clear();
+
+              int bytesRead = tempBis.read(buf, 0, inputBuffer.limit());
+              Log.d("RNAudio", "tempBis read: " + bytesRead);
+              if (bytesRead > 0) {
+                totalBytesRead += bytesRead;
+                inputBuffer.put(buf, 0, bytesRead);
+                encoder.queueInputBuffer(inputBufferIndex, 0, bytesRead, (long) presentationTimeUs, 0);
+                presentationTimeUs = 1000000l * (totalBytesRead / 2) / sampleRate;
+              }
+              while (true) {
+                int index = dequeueOutputBuffer();
+                if (index < 0) {
+                  break;
+                }
+              }
           }
       }
-      queueInputBuffer(null);
+      while (true) {
+          inputBufferIndex = encoder.dequeueInputBuffer(0);
+          if (inputBufferIndex >= 0) {
+            Log.d("RNAudio", "BUFFER_FLAG_END_OF_STREAM");
+            encoder.queueInputBuffer(inputBufferIndex, 0, 0, (long) presentationTimeUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+            break;
+          }
+      }
+      Log.d("RNAudio", "drain buffer");
       while (!doneEncoding) {
         dequeueOutputBuffer();
       }
       tempBis.close();
-      aacBos.close();
-      // mediaMuxer.stop();
-      // mediaMuxer.release();
+      mediaMuxer.stop();
+      mediaMuxer.release();
     } catch (Exception e) {
       String stackTrace = Log.getStackTraceString(e);
       Log.d("RNAudio", "recordAndEncode error: " + stackTrace);
@@ -457,39 +455,9 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
       format.setInteger(MediaFormat.KEY_CHANNEL_COUNT, channels);
       format.setInteger(MediaFormat.KEY_BIT_RATE, bitRate);
       format.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
-      format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 2048);
+      format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, BUFFER_SIZE);
       encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-      // mediaMuxer = new MediaMuxer(currentOutputFile, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
-  }
-
-  private void queueInputBuffer(byte[] data) {
-      try {
-          int inputBufferIndex = encoder.dequeueInputBuffer(0);
-          if (inputBufferIndex >= 0) {
-              if (data == null) {
-                  Log.d("RNAudio", "queueInputBuffer done");
-                  encoder.queueInputBuffer(
-                      inputBufferIndex,
-                      0 /* offset */,
-                      0 /* size */,
-                      0 /* timeUs */,
-                      MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-              } else {
-                  ByteBuffer inputBuffer;
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                      inputBuffer = encoder.getInputBuffer(inputBufferIndex);
-                  } else {
-                      inputBuffer = encoder.getInputBuffers()[inputBufferIndex];
-                  }
-                  inputBuffer.clear();
-                  inputBuffer.limit(data.length);
-                  inputBuffer.put(data);
-                  encoder.queueInputBuffer(inputBufferIndex, 0, data.length, 0, 0);
-              }
-          }
-      } catch (final Exception e) {
-          Log.e("RNAudio", "queueInputBuffer Error " + e);
-      }
+      mediaMuxer = new MediaMuxer(currentOutputFile, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
   }
 
   private int dequeueOutputBuffer() {
@@ -499,34 +467,27 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
           if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
             MediaFormat format = encoder.getOutputFormat();
             Log.d("RNAudio", "INFO_OUTPUT_FORMAT_CHANGED: " + format);
-            // audioTrackIndex = mediaMuxer.addTrack(format);
-            // mediaMuxer.start();
-            // Log.d("RNAudio", "mediaMuxer audioTrackIndex = " + String.valueOf(audioTrackIndex));
+            audioTrackIndex = mediaMuxer.addTrack(format);
+            mediaMuxer.start();
+            Log.d("RNAudio", "mediaMuxer audioTrackIndex = " + String.valueOf(audioTrackIndex));
           } else if (outputBufferIndex >= 0) {
               ByteBuffer outputBuffer = encoder.getOutputBuffer(outputBufferIndex);
-              MediaFormat bufferFormat = encoder.getOutputFormat(outputBufferIndex);
-              if (outputBuffer != null) {
-                  int outBitSize = bufferInfo.size;
-                  int outPacketSize = outBitSize + 7; // ADTS header size
-                  outputBuffer.position(bufferInfo.offset);
-                  outputBuffer.limit(bufferInfo.offset + bufferInfo.size);
-
-                  byte[] chunkAudio = new byte[outPacketSize];
-                  int sampleRate = bufferFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
-                  int channels = bufferFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
-                  addADTStoPacket(chunkAudio, sampleRate, channels, outPacketSize);
-                  outputBuffer.get(chunkAudio, 7, outBitSize);
-                  outputBuffer.position(bufferInfo.offset);
-                  aacBos.write(chunkAudio, 0, chunkAudio.length);
-
+              outputBuffer.position(bufferInfo.offset);
+              outputBuffer.limit(bufferInfo.offset + bufferInfo.size);
+              if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                  byte[] buf = new byte[bufferInfo.size];
+                  outputBuffer.get(buf);
+                  String bufStr = "buf[0]: " + buf[0] + ", buf[1]: " + buf[1];
+                  Log.d("RNAudio", "BUFFER_FLAG_CODEC_CONFIG size: " + bufferInfo.size + "\n" + bufStr);
+              } else {
                   doneEncoding = (bufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0;
-                  // ByteBuffer audioBuffer = ByteBuffer.allocate(outPacketSize);
-                  // audioBuffer.put(chunkAudio);
-                  // mediaMuxer.writeSampleData(audioTrackIndex, audioBuffer, bufferInfo);
 
-                  outputBuffer.clear();
-                  encoder.releaseOutputBuffer(outputBufferIndex, false);
+                  if (!doneEncoding) {
+                      mediaMuxer.writeSampleData(audioTrackIndex, outputBuffer, bufferInfo);
+                  }
               }
+              outputBuffer.clear();
+              encoder.releaseOutputBuffer(outputBufferIndex, false);
           }
           return outputBufferIndex;
       } catch (final Exception e) {
@@ -534,30 +495,5 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
           Log.e("RNAudio", "dequeueOutputBuffer Error: " + stackTrace);
       }
       return -1;
-  }
-
-  private int getSampleRateType(int sampleRate) {
-    switch (sampleRate) {
-      case 44100:
-        return 4;
-      case 22050:
-        return 4;
-    }
-    return 4;
-  }
-
-  // reference https://wiki.multimedia.cx/index.php/ADTS
-  private void addADTStoPacket(byte[] packet, int sampleRate, int channels, int packetLen) {
-      int profile = 2; // AAC LC
-      int freqIdx = getSampleRateType(sampleRate);
-      int chanCfg = channels;
-
-      packet[0] = (byte) 0xFF;
-      packet[1] = (byte) 0xF1;
-      packet[2] = (byte) (((profile - 1) << 6) + (freqIdx << 2) + (chanCfg >> 2));
-      packet[3] = (byte) (((chanCfg & 3) << 6) + (packetLen >> 11));
-      packet[4] = (byte) ((packetLen & 0x7FF) >> 3);
-      packet[5] = (byte) (((packetLen & 7) << 5) + 0x1F);
-      packet[6] = (byte) 0xFC;
   }
 }
