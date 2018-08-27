@@ -19,7 +19,7 @@ NSString *const AudioRecorderEventFinished = @"recordingFinished";
 @implementation AudioRecorderManager {
 
   AVAudioRecorder *_audioRecorder;
-
+    AVAudioEngine *engine;
   NSTimeInterval _currentTime;
   id _progressUpdateTimer;
   int _progressUpdateInterval;
@@ -204,7 +204,7 @@ RCT_EXPORT_METHOD(prepareRecordingAtPath:(NSString *)path sampleRate:(float)samp
       [_recordSession setCategory:AVAudioSessionCategoryRecord error:nil];
       [_recordSession setMode:AVAudioSessionModeMeasurement error:nil];
   }else{
-      [_recordSession setCategory:AVAudioSessionCategoryMultiRoute error:nil];
+      [_recordSession setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionAllowBluetooth error:nil];
   }
 
   _audioRecorder = [[AVAudioRecorder alloc]
@@ -249,6 +249,20 @@ RCT_EXPORT_METHOD(resumeRecording)
   if (!_audioRecorder.isRecording) {
     [_audioRecorder record];
   }
+}
+
+RCT_EXPORT_METHOD(startMonitoring)
+{
+    engine = [[AVAudioEngine alloc] init];
+    AVAudioInputNode *input = [engine inputNode];
+    [engine connect:input to:[engine mainMixerNode] format:[input inputFormatForBus:0]];
+    NSError *error;
+    [engine startAndReturnError:&error];
+}
+
+RCT_EXPORT_METHOD(stopMonitoring)
+{
+    [engine stop];
 }
 
 RCT_EXPORT_METHOD(checkAuthorizationStatus:(RCTPromiseResolveBlock)resolve reject:(__unused RCTPromiseRejectBlock)reject)
