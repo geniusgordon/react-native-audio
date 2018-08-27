@@ -268,7 +268,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
             if (msg.what == FINISH_ENCODING) {
               WritableMap result = Arguments.createMap();
               result.putString("status", "OK");
-              result.putString("audioFileURL", "file://" + currentOutputFile);
+              result.putString("audioFileURL", currentOutputFile);
               sendEvent("recordingFinished", result);
             }
           }
