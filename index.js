@@ -72,6 +72,12 @@ var AudioRecorder = {
   stopRecording: function() {
     return AudioRecorderManager.stopRecording();
   },
+  startMonitoring: function() {
+    return AudioRecorderManager.startMonitoring();
+  },
+  stopMonitoring: function() {
+    return AudioRecorderManager.stopMonitoring();
+  },
   checkAuthorizationStatus: AudioRecorderManager.checkAuthorizationStatus,
   requestAuthorization: AudioRecorderManager.requestAuthorization,
   removeListeners: function() {
