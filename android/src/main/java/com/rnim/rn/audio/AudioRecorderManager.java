@@ -418,14 +418,12 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
       while (isRecording) {
         byte[] buf = new byte[recordBufferSize];
         int num = audioRecord.read(buf, 0, recordBufferSize);
+        double sum = 0;
         for (int i = 0; i < num / 2; i++) {
-          int curAmp = 0;
-          int curSample = buf[i * 2] | (buf[i * 2 + 1] << 8);
-          if (curSample > curAmp) {
-            curAmp = curSample;
-          }
-          amplitude = curAmp;
+          int curAmp = buf[i * 2] | (buf[i * 2 + 1] << 8);
+          sum += curAmp * curAmp;
         }
+        amplitude = (int) Math.sqrt(sum / (num / 2));
         audioTrack.write(buf, 0, num);
         tempBos.write(buf);
       }
