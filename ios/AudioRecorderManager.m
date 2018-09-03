@@ -97,14 +97,14 @@ RCT_EXPORT_MODULE();
     
     // This will resume the music/audio file that was playing before the recording started
     // Without this piece of code, the music/audio will just be stopped
-    NSError *error;
-    [[AVAudioSession sharedInstance] setActive:NO
-                                   withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
-                                         error:&error];
-    if (error) {
-        // TODO: dispatch error over the bridge
-        NSLog(@"error: %@", [error localizedDescription]);
-    }
+//    NSError *error;
+//    [[AVAudioSession sharedInstance] setActive:NO
+//                                   withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
+//                                         error:&error];
+//    if (error) {
+//        // TODO: dispatch error over the bridge
+//        NSLog(@"error: %@", [error localizedDescription]);
+//    }
 }
 
 - (NSString *) applicationDocumentsDirectory
@@ -233,7 +233,7 @@ RCT_EXPORT_METHOD(startRecording)
 RCT_EXPORT_METHOD(stopRecording)
 {
   [_audioRecorder stop];
-  [_recordSession setCategory:AVAudioSessionCategoryPlayback error:nil];
+//  [_recordSession setCategory:AVAudioSessionCategoryPlayback error:nil];
   _prevProgressUpdateTime = nil;
 }
 
@@ -262,7 +262,8 @@ RCT_EXPORT_METHOD(startMonitoring)
 
 RCT_EXPORT_METHOD(stopMonitoring)
 {
-    [engine stop];
+    engine = nil;
+    [_recordSession setCategory:AVAudioSessionCategoryPlayback error:nil];
 }
 
 RCT_EXPORT_METHOD(checkAuthorizationStatus:(RCTPromiseResolveBlock)resolve reject:(__unused RCTPromiseRejectBlock)reject)
