@@ -392,8 +392,8 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
               if (meteringEnabled) {
                 // db = 20 * log10(peaks/ 32767); where 32767 - max value of amplitude in Android,
                 // peaks - current value
-                int db = calculateDbFromAmplitude(amplitude, 32767d);
-                body.putInt("currentMetering", db);
+                double db = calculateDbFromAmplitude(amplitude, 32767d);
+                body.putDouble("currentMetering", db);
               }
               sendEvent("recordingProgress", body);
             }
@@ -428,14 +428,13 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
       while (isRecording) {
         byte[] buf = new byte[recordBufferSize];
         int num = audioRecord.read(buf, 0, recordBufferSize);
-        int sum = 0;
         int curAmp = 0;
         if (num > 0) {
           for (int i = 0; i < num / 2; i++) {
-            curAmp = buf[i * 2] | (buf[i * 2 + 1] << 8);
-            sum += curAmp * curAmp;
+            int x = buf[i * 2] | (buf[i * 2 + 1] << 8);
+            curAmp = Math.max(curAmp, x);
           }
-          amplitude = (int) Math.sqrt(sum / (num / 2));
+          amplitude = curAmp;
         }
         if (shouldMonitor) {
           audioTrack.write(buf, 0, num);
@@ -562,7 +561,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
     return -1;
   }
 
-  private int calculateDbFromAmplitude(double amp, double max) {
+  private double calculateDbFromAmplitude(double amp, double max) {
     return amp == 0 ? -160 : (int) (20 * Math.log(amp / max));
   }
 }
