@@ -65,6 +65,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
   private boolean isPaused = false;
   private boolean doneEncoding = false;
   private boolean finishRecording = false;
+  private boolean shouldMonitor = false;
   private Timer timer;
   private StopWatch stopWatch;
   private int sampleRate;
@@ -369,6 +370,16 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
     promise.resolve(null);
   }
 
+  @ReactMethod
+  public void startMonitoring() {
+    shouldMonitor = true;
+  }
+
+  @ReactMethod
+  public void stopMonitoring() {
+    shouldMonitor = false;
+  }
+
   private void startTimer() {
     timer = new Timer();
     timer.scheduleAtFixedRate(
@@ -381,8 +392,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
               if (meteringEnabled) {
                 // db = 20 * log10(peaks/ 32767); where 32767 - max value of amplitude in Android,
                 // peaks - current value
-                int db =
-                    amplitude == 0 ? -160 : (int) (20 * Math.log(((double) amplitude) / 32767d));
+                int db = calculateDbFromAmplitude(amplitude, 32767d);
                 body.putInt("currentMetering", db);
               }
               sendEvent("recordingProgress", body);
@@ -418,13 +428,18 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
       while (isRecording) {
         byte[] buf = new byte[recordBufferSize];
         int num = audioRecord.read(buf, 0, recordBufferSize);
-        double sum = 0;
-        for (int i = 0; i < num / 2; i++) {
-          int curAmp = buf[i * 2] | (buf[i * 2 + 1] << 8);
-          sum += curAmp * curAmp;
+        int sum = 0;
+        int curAmp = 0;
+        if (num > 0) {
+          for (int i = 0; i < num / 2; i++) {
+            curAmp = buf[i * 2] | (buf[i * 2 + 1] << 8);
+            sum += curAmp * curAmp;
+          }
+          amplitude = (int) Math.sqrt(sum / (num / 2));
         }
-        amplitude = (int) Math.sqrt(sum / (num / 2));
-        audioTrack.write(buf, 0, num);
+        if (shouldMonitor) {
+          audioTrack.write(buf, 0, num);
+        }
         tempBos.write(buf);
       }
       tempBos.close();
@@ -545,5 +560,9 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
       Log.e("RNAudio", "dequeueOutputBuffer Error: " + stackTrace);
     }
     return -1;
+  }
+
+  private int calculateDbFromAmplitude(double amp, double max) {
+    return amp == 0 ? -160 : (int) (20 * Math.log(amp / max));
   }
 }
