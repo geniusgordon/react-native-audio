@@ -86,7 +86,7 @@ RCT_EXPORT_MODULE();
   }
     uint64_t audioFileSize = 0;
     audioFileSize = [[[NSFileManager defaultManager] attributesOfItemAtPath:[_audioFileURL path] error:nil] fileSize];
-  
+  [_recordSession setCategory:AVAudioSessionCategoryPlayback error:nil];
   [self.bridge.eventDispatcher sendAppEventWithName:AudioRecorderEventFinished body:@{
       @"base64":base64,
       @"duration":@(_currentTime),
@@ -253,6 +253,9 @@ RCT_EXPORT_METHOD(resumeRecording)
 
 RCT_EXPORT_METHOD(startMonitoring)
 {
+    _recordSession = [AVAudioSession sharedInstance];
+    [_recordSession setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionAllowBluetooth error:nil];
+    [_recordSession setActive:YES error:nil];
     engine = [[AVAudioEngine alloc] init];
     AVAudioInputNode *input = [engine inputNode];
     [engine connect:input to:[engine mainMixerNode] format:[input inputFormatForBus:0]];
@@ -263,7 +266,6 @@ RCT_EXPORT_METHOD(startMonitoring)
 RCT_EXPORT_METHOD(stopMonitoring)
 {
     engine = nil;
-    [_recordSession setCategory:AVAudioSessionCategoryPlayback error:nil];
 }
 
 RCT_EXPORT_METHOD(checkAuthorizationStatus:(RCTPromiseResolveBlock)resolve reject:(__unused RCTPromiseRejectBlock)reject)
