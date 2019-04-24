@@ -33,9 +33,11 @@ On *Android* you need to add a permission to `AndroidManifest.xml`:
 <uses-permission android:name="android.permission.RECORD_AUDIO" />
 ```
 
-#### Manual Installation on Android
+### Manual Installation
 
 This is not necessary if you have used `react-native link`
+
+#### Android
 
 Edit `android/settings.gradle` to declare the project directory:
 ```
@@ -68,6 +70,13 @@ public class MainApplication extends Application implements ReactApplication {
     );
   }
 ```
+
+#### iOS
+
+Drag `node_modules/react-native-audio/ios/RNAudio.xcoderproj` into your project's Libraries on Xcode.
+
+Add `libRNAudio.a` into Link Binary With Libraries from Xcode - Build Phases.
+
 
 ### Running the Sample App
 
@@ -104,10 +113,15 @@ SampleRate: int
 Channels: int
 AudioQuality: string
 AudioEncoding: string
+IncludeBase64: boolean
 ```
 
 Encodings supported on iOS: `lpcm, ima4, aac, MAC3, MAC6, ulaw, alaw, mp1, mp2, alac, amr`
 Encodings supported on Android: `aac, aac_eld, amr_nb, amr_wb, he_aac, vorbis`
+
+Use the `IncludeBase64` boolean to include the `base64` encoded recording on the `AudioRecorder.onFinished` event object. Please use it with care: passing large amounts of data over the bridge, from native to Javascript, can use lots of memory and cause slow performance.
+
+If you want to upload the audio, it might be best to do it on the native thread with a package like [React Native Fetch Blob](https://github.com/joltup/react-native-fetch-blob).
 
 #### iOS-only fields
 
@@ -126,14 +140,13 @@ AudioRecorder.onProgress = (data) => {
 };
 ```
 
-Use the `IncludeBase64` boolean to include the `base64` encoded recording on the `AudioRecorder.onFinished` event object. Please use it with care: passing large amounts of data over the bridge, from native to Javascript, can use lots of memory and cause slow performance.
-
-If you want to upload the audio, it might be best to do it on the native thread with a package like [React Native Fetch Blob](https://github.com/joltup/react-native-fetch-blob).
-
 #### Android-only fields
 
 AudioEncodingBitRate: int
+
 OutputFormat: string, `mpeg_4, aac_adts, amr_nb, amr_wb, three_gpp, webm`
+
+AudioSource: int (constants) (Possible values: AudioSource.DEFAULT, AudioSource.MIC, AudioSource.VOICE_UPLINK, AudioSource.VOICE_DOWNLINK, AudioSource.VOICE_CALL, AudioSource.CAMCORDER, AudioSource.VOICE_RECOGNITION, AudioSource.VOICE_COMMUNICATION, AudioSource.REMOTE_SUBMIX, AudioSource.UNPROCESSED)
 
 See [the example](https://github.com/jsierles/react-native-audio/blob/master/AudioExample/index.ios.js) for more details. For playing audio check out [React Native Sound](https://github.com/zmxv/react-native-sound)
 

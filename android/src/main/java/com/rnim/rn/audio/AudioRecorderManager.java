@@ -31,6 +31,11 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
@@ -38,6 +43,22 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
+
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.Environment;
+import android.media.MediaRecorder;
+import android.media.AudioManager;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
+import android.util.Base64;
+import android.util.Log;
+import com.facebook.react.modules.core.DeviceEventManagerModule;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.IllegalAccessException;
+import java.lang.NoSuchMethodException;
 
 class AudioRecorderManager extends ReactContextBaseJavaModule {
 
@@ -63,9 +84,11 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
   private String currentOutputFile;
   private boolean isRecording = false;
   private boolean isPaused = false;
+
   private boolean doneEncoding = false;
   private boolean finishRecording = false;
   private boolean shouldMonitor = false;
+  private boolean includeBase64 = false;
   private Timer timer;
   private StopWatch stopWatch;
   private int sampleRate;
@@ -179,6 +202,13 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
     try {
       Log.d("RNAudio", "recordingPath: " + recordingPath);
       initEncoder(sampleRate, channels, bitRate);
+    File destFile = new File(recordingPath);
+    if (destFile.getParentFile() != null) {
+      destFile.getParentFile().mkdirs();
+    }
+    recorder = new MediaRecorder();
+    try {
+      recorder.setAudioSource(recordingSettings.getInt("AudioSource"));
       int outputFormat = getOutputFormatFromString(recordingSettings.getString("OutputFormat"));
       int audioEncoder = getAudioEncoderFromString(recordingSettings.getString("AudioEncoding"));
       meteringEnabled = recordingSettings.getBoolean("MeteringEnabled");
@@ -189,6 +219,15 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
           "COULDNT_CONFIGURE_MEDIA_RECORDER",
           "Make sure you've added RECORD_AUDIO permission to your AndroidManifest.xml file;\n"
               + e.getMessage());
+      recorder.setAudioEncoder(audioEncoder);
+      recorder.setAudioSamplingRate(recordingSettings.getInt("SampleRate"));
+      recorder.setAudioChannels(recordingSettings.getInt("Channels"));
+      recorder.setAudioEncodingBitRate(recordingSettings.getInt("AudioEncodingBitRate"));
+      recorder.setOutputFile(destFile.getPath());
+      includeBase64 = recordingSettings.getBoolean("IncludeBase64");
+    }
+    catch(final Exception e) {
+      logAndRejectPromise(promise, "COULDNT_CONFIGURE_MEDIA_RECORDER" , "Make sure you've added RECORD_AUDIO permission to your AndroidManifest.xml file "+e.getMessage());
       return;
     }
 
@@ -320,6 +359,35 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
     }
 
     promise.resolve(currentOutputFile);
+
+    WritableMap result = Arguments.createMap();
+    result.putString("status", "OK");
+    result.putString("audioFileURL", "file://" + currentOutputFile);
+
+    String base64 = "";
+    if (includeBase64) {
+      try {
+        InputStream inputStream = new FileInputStream(currentOutputFile);
+        byte[] bytes;
+        byte[] buffer = new byte[8192];
+        int bytesRead;
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        try {
+          while ((bytesRead = inputStream.read(buffer)) != -1) {
+            output.write(buffer, 0, bytesRead);
+          }
+        } catch (IOException e) {
+          Log.e(TAG, "FAILED TO PARSE FILE");
+        }
+        bytes = output.toByteArray();
+        base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
+      } catch(FileNotFoundException e) {
+        Log.e(TAG, "FAILED TO FIND FILE");
+      }
+    }
+    result.putString("base64", base64);
+
+    sendEvent("recordingFinished", result);
   }
 
   @ReactMethod
